@@ -205,6 +205,34 @@ figcaption { font-size: .82rem; color: var(--muted); line-height: 1.6; }
 .terms dt { font-weight: 700; }
 .terms dd { margin: 0; color: var(--muted); }
 @media (max-width: 480px) { .terms { grid-template-columns: minmax(0, 1fr); gap: 2px; } .terms dd { margin-bottom: 8px; } }
+.result-pop {
+  position: absolute; inset: 0; z-index: 5; display: grid; place-items: center;
+  padding: 16px; overflow: auto; border-radius: 6px;
+  background: rgba(12, 16, 14, .45); backdrop-filter: blur(1.5px);
+}
+.res-card {
+  width: min(100%, 360px); display: grid; gap: 12px; justify-items: center; text-align: center;
+  background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 14px;
+  padding: 20px 22px 18px; box-shadow: 0 24px 50px -16px rgba(0,0,0,.6);
+  animation: popIn .28s cubic-bezier(.2,.9,.3,1.2);
+}
+.res-eyebrow { font-size: .75rem; letter-spacing: .14em; color: var(--muted); }
+.res-winner { display: flex; align-items: center; gap: 12px; }
+.res-winner h2 { margin: 0; font-family: var(--f-display); font-weight: 800; font-size: clamp(1.4rem, 4.5vw, 1.9rem); line-height: 1.25; text-wrap: balance; }
+.res-stone { flex: none; width: 34px; height: 34px; border-radius: 50%; }
+.res-stone.b { background: radial-gradient(circle at 35% 30%, #777, #0b0b0b 70%); box-shadow: 0 3px 6px rgba(0,0,0,.35); }
+.res-stone.w { background: radial-gradient(circle at 35% 30%, #fff, #cfcdc4 75%); box-shadow: 0 3px 6px rgba(0,0,0,.25), 0 0 0 1px #a9a79c; }
+.res-you { margin: 0; font-weight: 700; color: var(--accent); }
+.res-you.lose { color: var(--muted); }
+.res-score { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.res-col { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; display: grid; gap: 1px; font-size: .78rem; color: var(--muted); }
+.res-col.win { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.res-col .who { color: var(--fg); font-weight: 700; font-size: .85rem; }
+.res-col b { font-family: var(--f-mono); font-variant-numeric: tabular-nums; font-size: 1.35rem; font-weight: 500; color: var(--fg); }
+.res-detail { margin: 0; font-size: .85rem; color: var(--muted); }
+.res-actions { width: 100%; display: grid; gap: 8px; }
+.res-actions button { padding: 11px 8px; }
+.res-note { margin: 0; font-size: .75rem; color: var(--muted); }
 .status {
   background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
   padding: 12px 14px; min-height: 72px; display: grid; gap: 2px; align-content: center;
@@ -251,6 +279,23 @@ legend { font-size: .75rem; color: var(--muted); letter-spacing: .08em; padding:
   <div class="game">
     <div class="board-wrap">
       <canvas id="board" tabindex="0" aria-label="碁盤"></canvas>
+      <div class="result-pop" id="resPop" hidden role="dialog" aria-modal="false" aria-labelledby="resTitle">
+        <div class="res-card">
+          <div class="res-eyebrow" id="resEyebrow">対局終了</div>
+          <div class="res-winner"><span class="res-stone b" id="resStone"></span><h2 id="resTitle"></h2></div>
+          <p class="res-you" id="resYou"></p>
+          <div class="res-score" id="resScore">
+            <div class="res-col" id="resColB"><span class="who">黒</span><b id="resB"></b><span id="resBd"></span></div>
+            <div class="res-col" id="resColW"><span class="who">白</span><b id="resW"></b><span id="resWd"></span></div>
+          </div>
+          <p class="res-detail" id="resDetail"></p>
+          <div class="res-actions">
+            <button class="primary" id="resAgain">次の対局を始める</button>
+            <button id="resView">盤面を確認する</button>
+          </div>
+          <p class="res-note" id="resNote"></p>
+        </div>
+      </div>
       <div class="pop" id="pop" hidden role="status" aria-live="assertive">
         <div class="pop-card">
           <span class="pop-icon" id="popIcon"></span>
@@ -283,6 +328,10 @@ legend { font-size: .75rem; color: var(--muted); letter-spacing: .08em; padding:
       <div class="actions" id="actScore" hidden>
         <button class="primary wide" id="btnConfirm">この内容で集計する</button>
         <button class="wide" id="btnResume">対局に戻る</button>
+      </div>
+      <div class="actions" id="actOver" hidden>
+        <button class="primary" style="grid-column: span 2" id="btnNext">次の対局を始める</button>
+        <button id="btnShowResult">結果</button>
       </div>
       <div class="actions" id="actResign" hidden>
         <button class="primary" id="btnResignYes">投了する</button>
@@ -453,7 +502,7 @@ legend { font-size: .75rem; color: var(--muted); letter-spacing: .08em; padding:
   function fresh(size, mode) {
     return { size, mode, board: new Array(size * size).fill(0), turn: 1, ko: -1,
       caps: [0, 0, 0], passes: 0, last: -1, moveNo: 0, phase: 'play',
-      dead: [], history: [], result: null, msg: '', warn: false, confirmResign: false };
+      dead: [], history: [], result: null, resultHidden: false, msg: '', warn: false, confirmResign: false };
   }
 
   // ---------- rules ----------
@@ -496,7 +545,7 @@ legend { font-size: .75rem; color: var(--muted); letter-spacing: .08em; padding:
     return { board: S.board.slice(), turn: S.turn, ko: S.ko, caps: S.caps.slice(),
       passes: S.passes, last: S.last, moveNo: S.moveNo };
   }
-  function restore(h) { Object.assign(S, h); S.phase = 'play'; S.dead = []; S.result = null; }
+  function restore(h) { Object.assign(S, h); S.phase = 'play'; S.dead = []; S.result = null; S.resultHidden = false; }
 
   function play(i) {
     if (S.phase !== 'play') return false;
@@ -1107,7 +1156,43 @@ legend { font-size: .75rem; color: var(--muted); letter-spacing: .08em; padding:
   function setMsg(m, warn) { S.msg = m; S.warn = warn; }
   function coordName(i) { return COLS[i % S.size] + (S.size - ((i / S.size) | 0)); }
 
+  function renderResult() {
+    const over = S.phase === 'over' && S.result;
+    $('resPop').hidden = !over || S.resultHidden;
+    if (!over) return;
+    const R = S.result;
+    const w = R.winner || (R.text.startsWith('黒') ? 1 : 2);
+    $('resEyebrow').textContent = `対局終了・${S.size}路・${S.moveNo}手`;
+    $('resStone').className = 'res-stone ' + (w === 1 ? 'b' : 'w');
+    $('resTitle').textContent = R.text;
+    const you = $('resYou');
+    if (S.mode === 'ai') {
+      you.hidden = false;
+      you.textContent = w === 1 ? 'あなたの勝ちです' : 'コンピュータの勝ちです';
+      you.classList.toggle('lose', w !== 1);
+    } else you.hidden = true;
+    const sc = R.score;
+    $('resScore').hidden = !sc;
+    $('resDetail').hidden = !!sc;
+    if (sc) {
+      $('resB').textContent = sc.black;
+      $('resW').textContent = sc.white;
+      $('resBd').textContent = `石${sc.stones[1]}・地${sc.terr[1]}`;
+      $('resWd').textContent = `石${sc.stones[2]}・地${sc.terr[2]}・コミ${KOMI}`;
+      $('resColB').classList.toggle('win', w === 1);
+      $('resColW').classList.toggle('win', w === 2);
+    } else $('resDetail').textContent = R.detail;
+    const sizeLabel = document.querySelector('input[name=size]:checked').value + '路';
+    const modeLabel = document.querySelector('input[name=mode]:checked').value === 'ai' ? 'コンピュータ対局' : '二人で対局';
+    $('resNote').textContent = `次の対局：${sizeLabel}・${modeLabel}（右の設定で変更できます）`;
+  }
+  function showResultPop() {
+    S.resultHidden = false; render();
+    try { $('resAgain').focus({ preventScroll: true }); } catch (e) {}
+  }
+
   function render() {
+    renderResult();
     const vsAi = S.mode === 'ai';
     $('nameB').textContent = vsAi ? '黒（あなた）' : '黒';
     $('nameW').textContent = vsAi ? '白（コンピュータ）' : '白';
@@ -1119,7 +1204,8 @@ legend { font-size: .75rem; color: var(--muted); letter-spacing: .08em; padding:
     $('tB').hidden = !(playing && S.turn === 1);
     $('tW').hidden = !(playing && S.turn === 2);
 
-    $('actPlay').hidden = S.phase === 'score' || S.confirmResign;
+    $('actPlay').hidden = S.phase === 'score' || S.phase === 'over' || S.confirmResign;
+    $('actOver').hidden = S.phase !== 'over';
     $('actScore').hidden = S.phase !== 'score';
     $('actResign').hidden = !S.confirmResign;
     $('btnPass').disabled = !playing || !humanTurn();
@@ -1183,22 +1269,33 @@ legend { font-size: .75rem; color: var(--muted); letter-spacing: .08em; padding:
   $('btnResignNo').onclick = () => { S.confirmResign = false; render(); };
   $('btnResignYes').onclick = () => {
     const loser = S.turn; S.confirmResign = false; S.phase = 'over';
-    S.result = { text: `${loser === 1 ? '白' : '黒'}の中押し勝ち`, detail: `${S.moveNo}手まで。${loser === 1 ? '黒' : '白'}が投了しました。`, counted: false };
-    render();
+    S.result = { text: `${loser === 1 ? '白' : '黒'}の中押し勝ち`, detail: `${loser === 1 ? '黒' : '白'}が投了しました。`,
+      counted: false, winner: 3 - loser, score: null };
+    showResultPop();
   };
   $('btnConfirm').onclick = () => {
     const e = evaluate(); const d = e.black - e.white;
     S.phase = 'over';
     S.result = { text: `${d > 0 ? '黒' : '白'}の${Math.abs(d)}目勝ち`,
-      detail: `黒 ${e.black}（石${e.stones[1]}・地${e.terr[1]}）／白 ${e.white}（石${e.stones[2]}・地${e.terr[2]}・コミ${KOMI}）`, counted: true };
-    render();
+      detail: `黒 ${e.black}（石${e.stones[1]}・地${e.terr[1]}）／白 ${e.white}（石${e.stones[2]}・地${e.terr[2]}・コミ${KOMI}）`,
+      counted: true, winner: d > 0 ? 1 : 2, score: { black: e.black, white: e.white, stones: e.stones, terr: e.terr } };
+    showResultPop();
   };
   $('btnResume').onclick = () => { const h = S.history.pop(); restore(h); setMsg('対局を再開しました。', false); render(); };
-  $('btnNew').onclick = () => {
+  function startNew() {
     const size = +document.querySelector('input[name=size]:checked').value;
     const mode = document.querySelector('input[name=mode]:checked').value;
-    S = fresh(size, mode); hover = -1; resize(); render();
-  };
+    S = fresh(size, mode); hover = -1;
+    $('pop').hidden = true;
+    resize(); render();
+  }
+  $('btnNew').onclick = startNew;
+  $('btnNext').onclick = startNew;
+  $('resAgain').onclick = startNew;
+  $('resView').onclick = () => { S.resultHidden = true; render(); };
+  $('btnShowResult').onclick = showResultPop;
+  $('resPop').addEventListener('keydown', e => { if (e.key === 'Escape') { S.resultHidden = true; render(); } });
+  document.querySelectorAll('input[name=size], input[name=mode]').forEach(r => r.addEventListener('change', () => { if (S.phase === 'over') renderResult(); }));
 
   $('showTerr').addEventListener('change', draw);
   $('showEyes').addEventListener('change', draw);
